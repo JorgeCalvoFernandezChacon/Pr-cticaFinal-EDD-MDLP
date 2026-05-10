@@ -221,10 +221,58 @@ public class MainApp extends Application {
     }
 
     private void handleAtacar() {
-        // Implementation based on InteraccionService
-        // For now, find adjacent enemy
-        log("Intentando atacar...");
-        // Logic to find enemy and call ctx.interaccionService.atacarEnemigo
+        int fila = ctx.jugador.getFila();
+        int columna = ctx.jugador.getColumna();
+
+        int[][] direcciones = {
+                {-1, 0}, // arriba
+                {1, 0},  // abajo
+                {0, -1}, // izquierda
+                {0, 1}   // derecha
+        };
+
+        boolean enemigoEncontrado = false;
+
+        for (int[] dir : direcciones) {
+            int nf = fila + dir[0];
+            int nc = columna + dir[1];
+
+            // Comprobar límites
+            if (nf >= 0 && nf < ctx.currentHabitacion.getFilas()
+                    && nc >= 0 && nc < ctx.currentHabitacion.getColumnas()) {
+
+                Celda celda = ctx.currentHabitacion.getCelda(nf, nc);
+
+                if (celda.hasEntidad() && celda.getEntidad() instanceof Enemigo) {
+
+                    Enemigo enemigo = (Enemigo) celda.getEntidad();
+
+                    try {
+                        ctx.interaccionService.atacarEnemigo(ctx.jugador, enemigo);
+
+                        log("Has atacado al enemigo.");
+
+                        if (enemigo.isMuerto()) {
+                            celda.setEntidad(null);
+                            log("El enemigo ha muerto.");
+                        }
+
+                        ctx.gestorTurnos.finalizarTurno();
+
+                    } catch (AccionInvalidaException ex) {
+                        log("Error: " + ex.getMessage());
+                    }
+
+                    enemigoEncontrado = true;
+                    break;
+                }
+            }
+        }
+
+        if (!enemigoEncontrado) {
+            log("No hay enemigos adyacentes.");
+        }
+
         updateUI();
     }
 
@@ -240,9 +288,59 @@ public class MainApp extends Application {
     }
 
     private void handleUsar() {
-        log("Abriendo menú de inventario...");
-        // Logic to select and use object
-        updateUI();
+
+        Inventario inventario = ctx.jugador.getInventario();
+
+        if (inventario == null || inventario.getTamaño() == 0) {
+            log("El inventario está vacío.");
+            return;
+        }
+
+        ChoiceDialog<String> dialog = new ChoiceDialog<>();
+        dialog.setTitle("Inventario");
+        dialog.setHeaderText("Selecciona un objeto");
+
+        for (int i = 0; i < inventario.getTamaño(); i++) {
+            dialog.getItems().add(inventario.obtenerObjeto(i).getNombre());
+        }
+
+        dialog.showAndWait().ifPresent(nombre -> {
+
+            for (int i = 0; i < inventario.getTamaño(); i++) {
+
+                Objeto obj = inventario.obtenerObjeto(i);
+
+                if (obj.getNombre().equals(nombre)) {
+
+                    try {
+
+                        if (obj instanceof Equipable) {
+
+                            ctx.jugador.equipar((Equipable) obj);
+                            log("Has equipado: " + obj.getNombre());
+                        }
+
+                        else if (obj instanceof Consumible) {
+
+                            ((Consumible) obj).usar(ctx.jugador);
+                            inventario.eliminarObjeto(obj);
+
+                            log("Has usado: " + obj.getNombre()
+                                    + " (+ " + ((Consumible) obj).getRecuperacionVida() + " vida)");
+                        }
+
+                        ctx.gestorTurnos.finalizarTurno();
+
+                    } catch (Exception ex) {
+                        log("Error: " + ex.getMessage());
+                    }
+
+                    break;
+                }
+            }
+
+            updateUI();
+        });
     }
 
     private void handleAbrirPuerta() {
